@@ -204,7 +204,6 @@ class _MyHomePageState extends State<MyHomePage> {
         await rafRead.setPosition(maskHeadLength);
         originalHead = await rafRead.read(originalHeadPosition);
       }
-      await rafRead.close();
 
       final String fileName = filePath.substring(
           filePath.lastIndexOf('/') + 1, filePath.lastIndexOf('.'));
@@ -213,13 +212,24 @@ class _MyHomePageState extends State<MyHomePage> {
       final File outputFile = await File(saveFilePath).create();
       final RandomAccessFile rafWrite =
           await outputFile.open(mode: FileMode.write);
-      final File originalContent = await file.writeAsBytes(await file
-          .readAsBytes()
-          .then((Uint8List bytes) => bytes.sublist(0, originalHeadPosition)));
-      await rafWrite.writeFrom(await originalContent.readAsBytes());
+
+      const int chunkSize = 1024 * 1024;
+      int position = 0;
+
+      await rafRead.setPosition(0);
+      while (position < originalHeadPosition) {
+        final int remaining = originalHeadPosition - position;
+        final int currentChunkSize =
+            remaining < chunkSize ? remaining : chunkSize;
+        final Uint8List buffer = await rafRead.read(currentChunkSize);
+        await rafWrite.writeFrom(buffer);
+        position += currentChunkSize;
+      }
+
       await rafWrite.setPosition(0);
       await rafWrite.writeFrom(originalHead.reversed.toList());
       await rafWrite.close();
+      await rafRead.close();
 
       setState(() {
         _revealResult = '文件还原成功';
@@ -231,6 +241,7 @@ class _MyHomePageState extends State<MyHomePage> {
       });
     } finally {
       await raf.close();
+      await rafRead.close();
     }
   }
 
